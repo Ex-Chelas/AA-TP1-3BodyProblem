@@ -11,118 +11,93 @@ import matplotlib.pyplot as plt
 import random
 import numpy as np
 
-random.seed(42)
-np.random.seed(42)
-
-
-# Function to shuffle and split data indices based on a given chunk size
-def get_split_indices(dataset, train_frac, val_frac, test_frac, chunk_len=256):
-    num_trajectories = len(dataset) // chunk_len  # Calculate number of full chunks
-    assert train_frac + val_frac + test_frac == 1.0, "Fractions must sum to 1"
-
-    indices = np.arange(0, num_trajectories * chunk_len, chunk_len)  # Generate chunk starting indices
-    random.shuffle(indices)  # Shuffle the indices to randomize
-
-    train_size = int(train_frac * num_trajectories)
-    val_size = int(val_frac * num_trajectories)
-
-    train_idxs = indices[:train_size]
-    val_idxs = indices[train_size:train_size + val_size]
-    test_idxs = indices[train_size + val_size:]
-
-    return train_idxs, val_idxs, test_idxs
-
-# Function to clean out the rows with all zero values (colisions)
-def clean_data(dataset_matrix):
-    return np.array([row for row in dataset_matrix if not (row[-1] != 0 and all(val == 0.0 for val in row[:-1]))])
-
-# Function to prepare the input dataset by replicating the first row across the trajectory
-def prepare_dataset(matrix):
-    first_entry = []
-    processed_matrix = []
-
-    for row in matrix:
-        temp_row = row.copy()
-
-        if row[7] % 256 == 0:  # Identify trajectory start
-            first_entry = row.copy()
-        else:
-            for i in range(1, 7):
-                if row[-1] != 0 and all(val == 0.0 for val in row[:-1]):
-                    continue
-                temp_row[i] = first_entry[i]
-
-        processed_matrix.append(np.delete(temp_row, [7]))  # Remove 'id' column
-
-    return np.array(processed_matrix)
-
-def prepare_test_dataset(matrix):
-    """
-    Prepare the test dataset using the initial positions and the desired time steps.
-
-    Parameters:
-    - matrix: A numpy array with columns [Id, t, x0_1, y0_1, x0_2, y0_2, x0_3, y0_3]
-
-    Returns:
-    - processed_matrix: A numpy array ready for model input
-    """
-    processed_matrix = []
-    first_entry = None
-
-    for row in matrix:
-        temp_row = row.copy()
-
-        # Identify trajectory start
-        if row[0] % 256 == 0:  # 'Id' is at index 0
-            first_entry = row.copy()
-
-        # Replicate initial positions (from indices 2 to 7)
-        temp_row[2:8] = first_entry[2:8]
-
-        # Remove 'Id' column (index 0)
-        temp_row = np.delete(temp_row, [0])
-
-        processed_matrix.append(temp_row)
-
-    return np.array(processed_matrix)
-
-
+#random.seed(42) Used for reproducibility on tests
+#np.random.seed(42)
 
 # Load and preprocess the dataset
 def load_and_preprocess(filename):
-    raw_data = np.loadtxt(filename, delimiter=",", skiprows=1)
-    clean_data = np.delete(raw_data, [3, 4, 7, 8, 11, 12], axis=1)  # Remove unnecessary columns
-    return clean_data
+    df = pd.read_csv(filename)
+    
+    # Drop unnecessary columns and rows with all zeros (collisions)
+    df_clean = df.drop(columns=['v_x_1', 'v_y_1', 'v_x_2', 'v_y_2', 'v_x_3', 'v_y_3', 'Id'])
+    df_clean = df_clean[(df_clean != 0).any(axis=1)]
+    
+    
+    # Print the first few rows of the cleaned dataset 
+    print(df_clean.head(5))
+    return df_clean
 
-# Split the data into training, validation, and test sets, and clean the data
-def process_splits(data, train_ratio, val_ratio, test_ratio):
-    train_idxs, val_idxs, test_idxs = get_split_indices(data, train_ratio, val_ratio, test_ratio)
+# Function to identify chunks (trajectories) and assign a trajectory ID
+def assign_trajectory_ids(df):
+    # Create a new column 'tj_id' for trajectory IDs
+    df['tj_id'] = (df['t'] == 0) & (df.drop(columns=['t']) != 0).any(axis=1)
+    df['tj_id'] = df['tj_id'].cumsum()  # Cumulative sum to assign trajectory numbers
+    
+    print(df.head(300))
+    
+    return df
 
-    train_data = np.concatenate([data[idx: idx + 256] for idx in train_idxs], axis=0)
-    val_data = np.concatenate([data[idx: idx + 256] for idx in val_idxs], axis=0)
-    test_data = np.concatenate([data[idx: idx + 256] for idx in test_idxs], axis=0)
+# Function to split dataset into chunks by trajectory
+def split_by_trajectories(df, train_frac=0.7, val_frac=0.15, test_frac=0.15):
+    assert train_frac + val_frac + test_frac == 1.0, "Fractions must sum to 1"
 
-    print(f"Training data size before cleaning: {train_data.shape}")
-    print(f"Validation data size before cleaning: {val_data.shape}")
+    # Get unique trajectory IDs
+    unique_tj_ids = df['tj_id'].unique()
+    random.shuffle(unique_tj_ids)  # Shuffle to randomize
+    
+    num_trajectories = len(unique_tj_ids)
+    train_size = int(train_frac * num_trajectories)
+    val_size = int(val_frac * num_trajectories)
 
-    train_clean = clean_data(train_data)
-    val_clean = clean_data(val_data)
-    test_clean = clean_data(test_data)
+    # Split based on trajectory IDs
+    train_ids = unique_tj_ids[:train_size]
+    val_ids = unique_tj_ids[train_size:train_size + val_size]
+    test_ids = unique_tj_ids[train_size + val_size:]
+    
+    train_data = df[df['tj_id'].isin(train_ids)]
+    val_data = df[df['tj_id'].isin(val_ids)]
+    test_data = df[df['tj_id'].isin(test_ids)]
+    
+    return train_data, val_data, test_data
 
-    print(f"Training data size after cleaning: {train_clean.shape}")
-    print(f"Validation data size after cleaning: {val_clean.shape}")
+# Function to clean and split the dataset
+def process_and_store_splits(filename, train_frac=0.7, val_frac=0.15, test_frac=0.15):
+    # Load and clean data
+    df = load_and_preprocess(filename)
+    
+    # Assign trajectory IDs
+    df = assign_trajectory_ids(df)
+    
+    # Split into train, val, and test based on trajectories
+    train_data, val_data, test_data = split_by_trajectories(df, train_frac, val_frac, test_frac)
 
-    return train_clean, val_clean, test_clean
+    # Store the clean data
+    train_data.to_csv('train_data_clean.csv', index=False)
+    val_data.to_csv('val_data_clean.csv', index=False)
+    test_data.to_csv('test_data_clean.csv', index=False)
+    
+    return train_data, val_data, test_data
 
-def analyze_distributions(train_data, val_data):
-    train_df = pd.DataFrame(train_data)
-    val_df = pd.DataFrame(val_data)
+# Function to prepare the dataset (replicate initial positions across the trajectory)
+def prepare_dataset(df):
+    # Create a copy to avoid modifying the original dataframe
+    df_copy = df.copy()
 
-    print("Training Data Description:")
-    print(train_df.describe())
+    # For each unique trajectory (based on 'tj_id')
+    for tj_id in df_copy['tj_id'].unique():
+        # Extract the rows corresponding to the current trajectory
+        trajectory_df = df_copy[df_copy['tj_id'] == tj_id]
+        
+        # Get the initial positions where t == 0 (first row of the trajectory)
+        initial_positions = trajectory_df[trajectory_df['t'] == 0][['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']].iloc[0]
+        
+        # Set all position columns in this trajectory to the initial positions
+        df_copy.loc[df_copy['tj_id'] == tj_id, ['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']] = initial_positions.values
+    
+    # Drop the 'tj_id' column as it's no longer needed
+    df_copy = df_copy.drop(columns=['tj_id'])
 
-    print("Validation Data Description:")
-    print(val_df.describe())
+    return df_copy
 
 
 # Function to build and train the linear regression model
@@ -131,7 +106,7 @@ def build_and_train_model(X_train, y_train):
         ('scaler', StandardScaler()),  # Standardization
         ('regressor', LinearRegression())  # Linear regression model
     ])
-
+    
     model_pipeline.fit(X_train, y_train)
     return model_pipeline
 
@@ -158,25 +133,22 @@ def plot_y_yhat(y_val, y_pred, plot_title="plot"):
     plt.savefig(plot_title + '.pdf')
     plt.show()
 
+# Main script
+def main():
 
+    # Load, process, and split the dataset
+    process_and_store_splits('X_train.csv')
 
-#depois eu faço bonito é python chill
-training_MSE = []
-validation_MSE = []
-test_MSE = []
-current = 99
+    train_data = pd.read_csv('train_data_clean.csv')
+    val_data = pd.read_csv('val_data_clean.csv')
+    #test_data = pd.read_csv('test_data_clean.csv') TODO: ONLY USE THIS ON FINAL VERSION, shall remain untouched
 
-def do_the_thing(data):
-    train_data, val_data, test_data = process_splits(data, 0.7, 0.15, 0.15)
-
-    # Prepare the inputs for training and predictions
+    # Prepare the inputs for training and predictions (dropping unnecessary columns)
     X_train = prepare_dataset(train_data)
-    X_val = prepare_dataset(val_data)
-    X_test = prepare_dataset(test_data)
+    y_train = train_data[['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']].values
 
-    y_train = np.delete(train_data, [0, 7], axis=1)  # Delete time and id columns
-    y_val = np.delete(val_data, [0, 7], axis=1)
-    y_test = np.delete(test_data, [0, 7], axis=1)
+    X_val = prepare_dataset(val_data)
+    y_val = val_data[['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']].values
 
     # Build and train the model
     model = build_and_train_model(X_train, y_train)
@@ -192,50 +164,16 @@ def do_the_thing(data):
     print(f"Training MSE: {train_mse}")
     print(f"Validation MSE: {val_mse}")
 
-    training_MSE.append(train_mse)
-    validation_MSE.append(val_mse)
-    # Plot the actual vs predicted graph for training set
-    # plot_y_yhat(y_train, y_train_pred, plot_title="Training Set: Actual vs Predicted")
+    # Load test data and prepare it for prediction
+    test_data = pd.read_csv("X_test.csv")
+    X_test = prepare_dataset(test_data)
 
-    # Test predictions and MSE calculation
+    # Predict on the test data
     y_test_pred = model.predict(X_test)
-    test_mse = mean_squared_error(y_test, y_test_pred)
-    print(f"Test MSE: {test_mse}")
-    test_MSE.append(test_mse)
 
-    global current
-    current = (test_mse + train_mse + val_mse) / 3
+    # Convert the predictions to a DataFrame and store it as a CSV
+    y_test_pred_df = pd.DataFrame(y_test_pred, columns=['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3'])
+    y_test_pred_df.to_csv('polynomial_submission.csv', index=False)
 
-    return model
-
-# Main script
-def main():
-    # Load the dataset
-    data = load_and_preprocess("../data/X_train.csv")
-    test_data = np.loadtxt("../data/X_test.csv", delimiter=",", skiprows=1)
-    best = 100
-    best_model = None
-    for i in range(1):
-        model = do_the_thing(data)
-        if current < best:
-            best = current
-            best_model = model
-
-    x_teste = prepare_test_dataset(test_data)
-    y_teste_pred = best_model.predict(x_teste)
-    y_teste_pred_df = pd.DataFrame(y_teste_pred)
-    id_column = y_teste_pred[:, 0]  # Extract 'Id' from original test data
-    y_teste_pred_df.insert(0, 'Id', id_column)
-    y_teste_pred_df.to_csv('test_data_pred.csv', index=False)
-
-
-
-    # Plot the actual vs predicted graph for test set
-    #plot_y_yhat(y_test, y_test_pred, plot_title="Test Set: Actual vs Predicted")
-    print(f"avg Training MSE: {np.mean(training_MSE)}")
-    print(f"avg Validation MSE: {np.mean(validation_MSE)}")
-    print(f"avg Test MSE: {np.mean(test_MSE)}")
-
-# Run the main function
 if __name__ == "__main__":
     main()
