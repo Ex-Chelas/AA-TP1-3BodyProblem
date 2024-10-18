@@ -2,8 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import random
-from sklearn.preprocessing import StandardScaler
+
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 from sklearn.pipeline import Pipeline
 
@@ -178,3 +179,5 @@ if __name__ == "__main__":
     y_test_pred_df = pd.DataFrame(y_test_pred, columns=['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3'])
     y_test_pred_df.insert(0, 'Id', y_test_pred_df.index)
     y_test_pred_df.to_csv('baseline-model.csv', index=False)
+    print(f"Predictions saved to baseline-model.csv")
+    print(f"File size: {y_test_pred_df.shape}")
