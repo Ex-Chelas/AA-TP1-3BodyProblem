@@ -1,5 +1,3 @@
-from idlelib.autocomplete import TRY_A
-
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -11,9 +9,6 @@ import matplotlib.pyplot as plt
 import random
 import numpy as np
 
-#random.seed(42) Used for reproducibility on tests
-#np.random.seed(42)
-
 # Load and preprocess the dataset
 def load_and_preprocess(filename):
     df = pd.read_csv(filename)
@@ -22,28 +17,19 @@ def load_and_preprocess(filename):
     df_clean = df.drop(columns=['v_x_1', 'v_y_1', 'v_x_2', 'v_y_2', 'v_x_3', 'v_y_3', 'Id'])
     df_clean = df_clean[(df_clean != 0).any(axis=1)]
     
+    # Create a new column 'tj_id' for trajectory IDs
+    df_clean['tj_id'] = (df_clean['t'] == 0)
+    df_clean['tj_id'] = df_clean['tj_id'].cumsum()
     
-    # Print the first few rows of the cleaned dataset 
-    print(df_clean.head(5))
     return df_clean
 
-# Function to identify chunks (trajectories) and assign a trajectory ID
-def assign_trajectory_ids(df):
-    # Create a new column 'tj_id' for trajectory IDs
-    df['tj_id'] = (df['t'] == 0) & (df.drop(columns=['t']) != 0).any(axis=1)
-    df['tj_id'] = df['tj_id'].cumsum()  # Cumulative sum to assign trajectory numbers
-    
-    print(df.head(300))
-    
-    return df
-
 # Function to split dataset into chunks by trajectory
-def split_by_trajectories(df, train_frac=0.7, val_frac=0.15, test_frac=0.15):
+def split_by_trajectories(df, train_frac=0.7, val_frac=0.15, test_frac=0.15): 
     assert train_frac + val_frac + test_frac == 1.0, "Fractions must sum to 1"
 
     # Get unique trajectory IDs
     unique_tj_ids = df['tj_id'].unique()
-    random.shuffle(unique_tj_ids)  # Shuffle to randomize
+    random.shuffle(unique_tj_ids) # Shuffle to randomize
     
     num_trajectories = len(unique_tj_ids)
     train_size = int(train_frac * num_trajectories)
@@ -65,9 +51,6 @@ def process_and_store_splits(filename, train_frac=0.7, val_frac=0.15, test_frac=
     # Load and clean data
     df = load_and_preprocess(filename)
     
-    # Assign trajectory IDs
-    df = assign_trajectory_ids(df)
-    
     # Split into train, val, and test based on trajectories
     train_data, val_data, test_data = split_by_trajectories(df, train_frac, val_frac, test_frac)
 
@@ -78,12 +61,12 @@ def process_and_store_splits(filename, train_frac=0.7, val_frac=0.15, test_frac=
     
     return train_data, val_data, test_data
 
-# Function to prepare the dataset (replicate initial positions across the trajectory)
-def prepare_dataset(df):
+# Function to prepare the train X (replicate initial positions across the trajectory, eliminating the actual positions.
+def prepare_supervised_X_dataset(df):
     # Create a copy to avoid modifying the original dataframe
     df_copy = df.copy()
 
-    # For each unique trajectory (based on 'tj_id')
+    # For each unique trajectory
     for tj_id in df_copy['tj_id'].unique():
         # Extract the rows corresponding to the current trajectory
         trajectory_df = df_copy[df_copy['tj_id'] == tj_id]
@@ -96,9 +79,33 @@ def prepare_dataset(df):
     
     # Drop the 'tj_id' column as it's no longer needed
     df_copy = df_copy.drop(columns=['tj_id'])
+    # Remove the line of t=0 because it adds nothing to the prediction
+    df_copy = df_copy[df_copy['t'] != 0]
 
     return df_copy
 
+def prepare_supervised_Y_dataset(df):
+     # Create a copy to avoid modifying the original dataframe
+    df_copy = df.copy()
+
+    df_copy = df_copy[df_copy['t'] != 0]
+    df_copy = df_copy[['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']]
+    
+    
+    return df_copy.values
+    
+
+def prepare_kaggle_test_dataset(df):
+    # Create a copy to avoid modifying the original dataframe
+    df_copy = df.copy()
+
+    # Remove id column
+    df_copy = df_copy.drop(columns=['Id'])
+    
+    # Rename the columns to match the expected format
+    df_copy.columns = ['t', 'x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']
+    
+    return df_copy
 
 # Function to build and train the linear regression model
 def build_and_train_model(X_train, y_train):
@@ -135,20 +142,19 @@ def plot_y_yhat(y_val, y_pred, plot_title="plot"):
 
 # Main script
 def main():
-
     # Load, process, and split the dataset
-    process_and_store_splits('X_train.csv')
+    # process_and_store_splits('X_train.csv')
 
     train_data = pd.read_csv('train_data_clean.csv')
     val_data = pd.read_csv('val_data_clean.csv')
     #test_data = pd.read_csv('test_data_clean.csv') TODO: ONLY USE THIS ON FINAL VERSION, shall remain untouched
 
     # Prepare the inputs for training and predictions (dropping unnecessary columns)
-    X_train = prepare_dataset(train_data)
-    y_train = train_data[['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']].values
+    X_train = prepare_supervised_X_dataset(train_data)
+    y_train = prepare_supervised_Y_dataset(train_data)
 
-    X_val = prepare_dataset(val_data)
-    y_val = val_data[['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']].values
+    X_val = prepare_supervised_X_dataset(val_data)
+    y_val = prepare_supervised_Y_dataset(val_data)
 
     # Build and train the model
     model = build_and_train_model(X_train, y_train)
@@ -164,16 +170,24 @@ def main():
     print(f"Training MSE: {train_mse}")
     print(f"Validation MSE: {val_mse}")
 
+    # plot_y_yhat(y_train, y_train_pred, 'Train Predicted vs Expected')
+    plot_y_yhat(y_val, y_val_pred, 'Validation Predicted vs Expected')
+
     # Load test data and prepare it for prediction
     test_data = pd.read_csv("X_test.csv")
-    X_test = prepare_dataset(test_data)
+    clean_test_data = test_data.drop(columns=['Id'])
+    
+    # Change columns to follow the format
+    clean_test_data.columns = ['t', 'x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']
 
     # Predict on the test data
-    y_test_pred = model.predict(X_test)
+    y_test_pred = model.predict(clean_test_data)
 
     # Convert the predictions to a DataFrame and store it as a CSV
     y_test_pred_df = pd.DataFrame(y_test_pred, columns=['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3'])
-    y_test_pred_df.to_csv('polynomial_submission.csv', index=False)
+    y_test_pred_df.insert(0, 'Id', y_test_pred_df.index)
+    
+    y_test_pred_df.to_csv('baseline-model.csv', index=False)
 
 if __name__ == "__main__":
     main()
