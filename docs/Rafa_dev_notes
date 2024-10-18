@@ -1,0 +1,11 @@
+During development, in the early stages of our program, we had a peculiar situation:
+our validations MSE was lowers than the test MSE
+We didnt know why, so we tried different things to test it
+firstly, we tried to run the code several times, and calculate the MSE for the mean of the results, with differente
+sections of our training data to see if it was a rare ocurrence
+
+We discovered two things: on average, for 20 runs, the MSE was the same, which makes sense
+we also discovered that its on average 1.94, which was pretty bad, feature engineering seems in order!
+additionally, sometimes the program crashes for a list index out of range, which warrnts investigation aswell
+
+Makes sense em tudo MENOS no training data, ai é kinda weird exceder o average, but ALAS
