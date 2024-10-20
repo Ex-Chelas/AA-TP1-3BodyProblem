@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import KFold
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, RidgeCV
 from sklearn.metrics import mean_squared_error
 from sklearn.pipeline import Pipeline
 
@@ -14,11 +14,10 @@ from model import prepare_supervised_x_dataset, prepare_supervised_y_dataset, pl
 
 train_mse_list = []
 val_mse_list = []
-time_list = []
 models = []
 
 
-def validate_poly_regression(x_train, y_train, x_val, y_val, regressor=LinearRegression(), degrees=range(1, 15), max_features=None):
+def validate_poly_regression(x_train, y_train, x_val, y_val, regressor=None, degrees=range(1, 15), max_features=None):
     best_rmse = 2.0
     best_model = None
     best_degree = None
@@ -31,9 +30,9 @@ def validate_poly_regression(x_train, y_train, x_val, y_val, regressor=LinearReg
 
         # Create a pipeline with polynomial features, scaling, and the regressor
         model_pipeline = Pipeline([
-            ('poly_features', poly),  # Polynomial features transformation
-            ('scaler', StandardScaler()),  # Standardization
-            ('regressor', regressor)  # Linear regression model
+            ('scaler', StandardScaler()),
+            ('poly_features', poly),
+            ('regressor', regressor)
         ])
 
         # Fit the model pipeline on the sampled training data
@@ -67,7 +66,7 @@ def validate_poly_regression(x_train, y_train, x_val, y_val, regressor=LinearReg
 
 if __name__ == "__main__":
     # Load, process, and split the dataset
-    #process_and_store_splits('X_train.csv')
+    process_and_store_splits('X_train.csv',0.1,0.1,0.8)
 
     train_data = pd.read_csv('train_data_clean.csv')
     val_data = pd.read_csv('val_data_clean.csv')
@@ -89,7 +88,7 @@ if __name__ == "__main__":
     #plot_k_precision()
     #plot_k_time()
 
-    res = validate_poly_regression(x_train, y_train, x_val, y_val, regressor=LinearRegression(), max_features=7)
+    res = validate_poly_regression(x_train, y_train, x_val, y_val, regressor=RidgeCV(), degrees=range(1,9))
 
     test_data = pd.read_csv("X_testa.csv")
     clean_test_data = test_data.drop(columns=['Id'])
