@@ -87,7 +87,7 @@ def validate_poly_regression(x_train, y_train, x_val, y_val, regressor=None, deg
 
 if __name__ == "__main__":
     # Load, process, and split the dataset
-    process_and_store_splits('X_train.csv', 0.1, 0.1, 0.8)
+    #process_and_store_splits('X_train.csv', 0.1, 0.1, 0.8)
 
     train_data = pd.read_csv('train_data_clean.csv')
     val_data = pd.read_csv('val_data_clean.csv')
@@ -103,13 +103,9 @@ if __name__ == "__main__":
     #x_test = prepare_supervised_x_dataset(test_data)
     #y_test = prepare_supervised_y_dataset(test_data)
 
-    # Load test data and prepare it for prediction
-    #plot_k_precision()
-    #plot_k_time()
-
-    res = validate_poly_regression(x_train, y_train, x_val, y_val, regressor=RidgeCV(), degrees=range(1, 7))
+    res = validate_poly_regression(x_train, y_train, x_val, y_val, regressor=RidgeCV(alphas=10), degrees=range(1, 10))
     plot_n_degrees()
-    test_data = pd.read_csv("X_testa.csv")
+    test_data = pd.read_csv("X_test.csv")
     clean_test_data = test_data.drop(columns=['Id'])
 
     # Change columns to follow the format

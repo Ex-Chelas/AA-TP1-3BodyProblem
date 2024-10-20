@@ -12,13 +12,9 @@ from sklearn.pipeline import Pipeline
 
 from model import prepare_supervised_x_dataset, prepare_supervised_y_dataset, plot_y_yhat, process_and_store_splits
 
-train_mse_list = []
-val_mse_list = []
-time_list = []
-models = []
 
 
-def plot_k_precision():
+def plot_k_precision(train_mse_list,val_mse_list):
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, 16), train_mse_list, label="Training MSE", marker='o')
     plt.plot(range(1, 16), val_mse_list, label="Validation MSE", marker='o')
@@ -35,7 +31,7 @@ def plot_k_precision():
     plt.show()
 
 
-def plot_k_time():
+def plot_k_time(time_list):
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, 16), time_list, label="Time Taken", marker='o', color='r')
     plt.title('Time Taken vs K Value for Training and Predicting')
@@ -46,47 +42,26 @@ def plot_k_time():
     plt.show()
 
 
-def knn_regression(X_train, Y_train, k=15):  #range(1, 15)
-    knn = KNeighborsRegressor(n_neighbors=k)
+def validate_knn_regression(x_train, y_train, x_val, y_val, k=range(1,15)):
+    train_mse_list = []
+    val_mse_list = []
+    time_list = []
+    models = []
 
-    knn.fit(X_train, Y_train)
-
-    models.append(knn)
-    return knn
-
-
-if __name__ == "__main__":
-    # Load, process, and split the dataset
-    #process_and_store_splits('X_train.csv')
-
-    train_data = pd.read_csv('train_data_clean.csv')
-    val_data = pd.read_csv('val_data_clean.csv')
-    test_data = pd.read_csv('test_data_clean.csv')  # TODO: ONLY USE THIS ON FINAL VERSION, shall remain untouched
-
-    # Prepare the inputs for training and predictions (dropping unnecessary columns)
-    x_train = prepare_supervised_x_dataset(train_data)
-    y_train = prepare_supervised_y_dataset(train_data)
-
-    x_val = prepare_supervised_x_dataset(val_data)
-    y_val = prepare_supervised_y_dataset(val_data)
-
-    x_test = prepare_supervised_x_dataset(test_data)
-    y_test = prepare_supervised_y_dataset(test_data)
-    for i in range(1, 16):
-        # Build and train the model
+    for kn in k:
+        knn = KNeighborsRegressor(n_neighbors=kn)
         start_time = time.time()
-        model = knn_regression(x_train, y_train, i)
+        knn.fit(x_train, y_train)
+
+        models.append(knn)
 
         # Train and validation predictions
-        y_train_pred = model.predict(x_train)
-        y_val_pred = model.predict(x_val)
-        y_test_pred = model.predict(x_test)
+        y_train_pred = knn.predict(x_train)
+        y_val_pred = knn.predict(x_val)
 
         # Calculate MSE for training and validation sets
         train_mse = mean_squared_error(y_train, y_train_pred)
         val_mse = mean_squared_error(y_val, y_val_pred)
-        test_mse = mean_squared_error(y_test, y_test_pred)
-        end_time = time.time()
 
         elapsed_time = time.time() - start_time
 
@@ -95,26 +70,50 @@ if __name__ == "__main__":
         time_list.append(elapsed_time)
 
         print("------")
-        print(f"For K: {i}")
+        print(f"For K: {kn}")
         print(f"Training MSE: {train_mse}")
         print(f"Validation MSE: {val_mse}")
-        print(f"Teste MSE: {test_mse}")
 
         # plot_y_yhat(y_train, y_train_pred, 'Train Predicted vs Expected')
-        plot_y_yhat(y_val, y_val_pred, 'Validation Predicted vs Expected for K ' + str(i))
+        plot_y_yhat(y_val, y_val_pred, 'Validation Predicted vs Expected for K ' + str(kn))
+
+
+
+    plot_k_precision(train_mse_list, val_mse_list)
+    plot_k_time(time_list)
+
+    print("Done with model for K "+str(val_mse_list.index(min(val_mse_list)) + 1))
+    return models[val_mse_list.index(min(val_mse_list)) + 1]
+
+
+
+if __name__ == "__main__":
+    # Load, process, and split the dataset
+    #process_and_store_splits('X_train.csv')
+
+    train_data = pd.read_csv('train_data_clean.csv')
+    val_data = pd.read_csv('val_data_clean.csv')
+    #test_data = pd.read_csv('test_data_clean.csv')  # TODO: ONLY USE THIS ON FINAL VERSION, shall remain untouched
+
+    # Prepare the inputs for training and predictions (dropping unnecessary columns)
+    x_train = prepare_supervised_x_dataset(train_data)
+    y_train = prepare_supervised_y_dataset(train_data)
+
+    x_val = prepare_supervised_x_dataset(val_data)
+    y_val = prepare_supervised_y_dataset(val_data)
+
+    #x_test = prepare_supervised_x_dataset(test_data)
+    #y_test = prepare_supervised_y_dataset(test_data)
+
+    model = validate_knn_regression(x_train, y_train, x_val, y_val, k=range(1,15))
 
     # Load test data and prepare it for prediction
-    plot_k_precision()
-    plot_k_time()
-    test_data = pd.read_csv("X_testa.csv")
+    test_data = pd.read_csv("X_test.csv")
     clean_test_data = test_data.drop(columns=['Id'])
 
     # Change columns to follow the format
     clean_test_data.columns = ['t', 'x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']
 
-    # Predict on the test data
-    print("Done with model for K "+str(val_mse_list.index(min(val_mse_list)) + 1))
-    model = models[val_mse_list.index(min(val_mse_list)) + 1]
     y_test_pred = model.predict(clean_test_data)
 
     # Convert the predictions to a DataFrame and store it as a CSV
