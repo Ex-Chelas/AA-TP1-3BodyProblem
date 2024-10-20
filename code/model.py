@@ -1,7 +1,8 @@
+import random
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import random
-import matplotlib.pyplot as plt
 
 
 # Load and preprocess the dataset
@@ -44,7 +45,7 @@ def split_by_trajectories(df, train_frac=0.7, val_frac=0.15, test_frac=0.15):
 
 
 # Function to clean and split the dataset
-def process_and_store_splits(filename, train_frac=0.7, val_frac=0.15, test_frac=0.15):
+def process_and_store_splits(filename, train_frac=0.4, val_frac=0.3, test_frac=0.3):
     # Load and clean data
     df = load_and_preprocess(filename)
 
@@ -93,6 +94,37 @@ def prepare_supervised_y_dataset(df):
     return df_copy.values
 
 
+# Feature engineering functions
+def add_time_features(df):
+    df['t_squared'] = df['t'] ** 2
+    df['t_cubed'] = df['t'] ** 3
+    df['inv_t'] = 1 / (df['t'] + 1e-5)
+    return df
+
+def add_distance_features(df):
+    df['dist_12'] = np.sqrt((df['x_1'] - df['x_2'])**2 + (df['y_1'] - df['y_2'])**2)
+    df['dist_13'] = np.sqrt((df['x_1'] - df['x_3'])**2 + (df['y_1'] - df['y_3'])**2)
+    df['dist_23'] = np.sqrt((df['x_2'] - df['x_3'])**2 + (df['y_2'] - df['y_3'])**2)
+    return df
+
+def add_squared_distance_features(df):
+    df['squared_dist_12'] = df['dist_12'] ** 2
+    df['squared_dist_13'] = df['dist_13'] ** 2
+    df['squared_dist_23'] = df['dist_23'] ** 2
+    return df
+
+def add_inverse_distance_features(df):
+    df['inv_dist_12'] = 1 / (df['dist_12'] + 1e-5)
+    df['inv_dist_13'] = 1 / (df['dist_13'] + 1e-5)
+    df['inv_dist_23'] = 1 / (df['dist_23'] + 1e-5)
+    return df
+
+def add_ratio_of_distance_features(df):
+    df['ratio_dist_12_13'] = df['dist_12'] / (df['dist_13'] + 1e-5)
+    df['ratio_dist_12_23'] = df['dist_12'] / (df['dist_23'] + 1e-5)
+    return df
+
+
 def prepare_kaggle_test_dataset(df):
     # Create a copy to avoid modifying the original dataframe
     df_copy = df.copy()
@@ -127,4 +159,4 @@ def plot_y_yhat(y_val, y_pred, plot_title="plot"):
         plt.axis('square')
 
     plt.savefig(plot_title + '.pdf')
-    plt.show()
+    # plt.show()

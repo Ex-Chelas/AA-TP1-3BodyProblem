@@ -1,22 +1,19 @@
-import time
-
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from sklearn.model_selection import KFold
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.linear_model import LinearRegression, RidgeCV
+from sklearn.linear_model import RidgeCV
 from sklearn.metrics import mean_squared_error
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
 
-from model import prepare_supervised_x_dataset, prepare_supervised_y_dataset, plot_y_yhat, process_and_store_splits
+from model import prepare_supervised_x_dataset, prepare_supervised_y_dataset, process_and_store_splits, add_time_features, add_distance_features
 
 train_mse_list = []
 val_mse_list = []
 models = []
 
 
+# Plotting the RMSE against polynomial degrees
 def plot_n_degrees():
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, len(train_mse_list) + 1), train_mse_list, label="Training RMSE", marker='o')
@@ -29,95 +26,102 @@ def plot_n_degrees():
 
     plt.title('RMSE vs Degrees for Training and Validation Sets')
     plt.xlabel('Degrees')
-    plt.ylabel('Root Mean Square Deviation (RMSE)')
+    plt.ylabel('Root Mean Square Error (RMSE)')
     plt.legend()
     plt.grid(True)
     plt.show()
 
 
+# Polynomial regression validation across multiple degrees
 def validate_poly_regression(x_train, y_train, x_val, y_val, regressor=None, degrees=range(5, 15), max_features=None):
-    best_rmse = 2.0
+    best_rmse = float('inf')  # Start with infinity as the worst RMSE
     best_model = None
     best_degree = None
 
-    # Loop through each degree and validate the model
+    # Loop through each degree of polynomial and validate
     for degree in degrees:
-        print(f"{degree} in the tank, {degree} in the tank. Swing it around and it becomes")
+        print(f"Validating polynomial degree: {degree}")
         # Create polynomial features
         poly = PolynomialFeatures(degree=degree, include_bias=False)
 
-        # Create a pipeline with polynomial features, scaling, and the regressor
+        # Create a pipeline with feature engineering, polynomial features, scaling, and the regressor (Ridge)
         model_pipeline = Pipeline([
-            ('scaler', StandardScaler()),
-            ('poly_features', poly),
-            ('regressor', regressor)
+            ('scaler', StandardScaler()),  # Standardization
+            ('poly_features', poly),  # Polynomial transformation
+            ('regressor', regressor)  # Ridge regression
         ])
 
-        # Fit the model pipeline on the sampled training data
+        # Fit the pipeline on the training data
         model_pipeline.fit(x_train, y_train)
 
+        # Predict on both training and validation sets
         y_train_pred = model_pipeline.predict(x_train)
         y_val_pred = model_pipeline.predict(x_val)
 
-        # Calculate MSE for training and validation sets
+        # Calculate the RMSE for both training and validation
         train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
-        train_mse_list.append(train_rmse)
         val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
+
+        train_mse_list.append(train_rmse)
         val_mse_list.append(val_rmse)
 
-        # Print number of polynomial features
+        # Print degree, feature count, and performance metrics
         num_features = model_pipeline.named_steps['poly_features'].n_output_features_
-        print(f"Degree: {degree}, Features: {num_features}, T_RMSE: {train_rmse}, V_RMSE: {val_rmse}")
+        print(f"Degree: {degree}, Features: {num_features}, Train RMSE: {train_rmse}, Val RMSE: {val_rmse}")
 
-        # Check if the number of features exceeds max_features, if specified
-        if max_features and num_features > max_features:
-            print(f"Skipping degree {degree} due to feature count exceeding {max_features}")
-            continue
-
-        # Keep track of the best model and RMSE
+        # Keep track of the best performing model based on validation RMSE
         if val_rmse < best_rmse:
             best_rmse = val_rmse
             best_model = model_pipeline
             best_degree = degree
 
-    print(f"Best degree: {best_degree} with RMSE: {best_rmse}")
+    print(f"Best polynomial degree: {best_degree} with RMSE: {best_rmse}")
 
     return best_model, best_rmse
 
 
 if __name__ == "__main__":
     # Load, process, and split the dataset
-    #process_and_store_splits('X_train.csv', 0.1, 0.1, 0.8)
+    process_and_store_splits('X_train.csv', 0.05, 0.05, 0.9)
 
-    train_data = pd.read_csv('train_data_clean.csv')
-    val_data = pd.read_csv('val_data_clean.csv')
+    train_data = pd.read_csv('train_data_clean_poli.csv')
+    val_data = pd.read_csv('val_data_clean_poli.csv')
 
-    # Prepare the inputs for training and predictions (dropping unnecessary columns)
+    # Prepare the inputs for training and validation datasets
     x_train = prepare_supervised_x_dataset(train_data)
     y_train = prepare_supervised_y_dataset(train_data)
 
     x_val = prepare_supervised_x_dataset(val_data)
     y_val = prepare_supervised_y_dataset(val_data)
 
-    #test_data = pd.read_csv('test_data_clean.csv')  # TODO: ONLY USE THIS ON FINAL VERSION, shall remain untouched
-    #x_test = prepare_supervised_x_dataset(test_data)
-    #y_test = prepare_supervised_y_dataset(test_data)
+    # Perform feature engineering (add time and distance features)
+    x_train = add_time_features(x_train)
+    x_train = add_distance_features(x_train)
+    
+    x_val = add_time_features(x_val)
+    x_val = add_distance_features(x_val)
 
-    res = validate_poly_regression(x_train, y_train, x_val, y_val, regressor=RidgeCV(alphas=10), degrees=range(1, 10))
+    # Validate polynomial regression models with degrees from 1 to 10
+    regressor = RidgeCV(alphas=(0.1, 1.0, 10.0))  # Use Ridge regression with cross-validation for alpha
+    best_model, best_rmse = validate_poly_regression(x_train, y_train, x_val, y_val, regressor=regressor, degrees=range(1, 11))
+
+    # Plot RMSE vs. polynomial degrees
     plot_n_degrees()
+
+    # Process and predict test data using the best model
     test_data = pd.read_csv("X_test.csv")
     clean_test_data = test_data.drop(columns=['Id'])
-
-    # Change columns to follow the format
     clean_test_data.columns = ['t', 'x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3']
 
-    # Predict on the test data
-    print("Done with model for K " + str(val_mse_list.index(min(val_mse_list)) + 1))
-    model = models[val_mse_list.index(min(val_mse_list)) + 1]
-    y_test_pred = model.predict(clean_test_data)
+    # Perform feature engineering on the test data
+    clean_test_data = add_time_features(clean_test_data)
+    clean_test_data = add_distance_features(clean_test_data)
 
-    # Convert the predictions to a DataFrame and store it as a CSV
+    # Predict on the test dataset using the best polynomial model
+    y_test_pred = best_model.predict(clean_test_data)
+
+    # Save the predictions to a CSV file
     y_test_pred_df = pd.DataFrame(y_test_pred, columns=['x_1', 'y_1', 'x_2', 'y_2', 'x_3', 'y_3'])
     y_test_pred_df.insert(0, 'Id', y_test_pred_df.index)
-
-    y_test_pred_df.to_csv('baseline-model.csv', index=False)
+    y_test_pred_df.to_csv('polynomial_submission.csv', index=False)
+    print("Test predictions saved to polynomial_submission.csv")
