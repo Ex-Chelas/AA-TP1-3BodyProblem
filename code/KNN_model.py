@@ -12,9 +12,13 @@ from sklearn.pipeline import Pipeline
 
 from model import prepare_supervised_x_dataset, prepare_supervised_y_dataset, plot_y_yhat, process_and_store_splits, add_time_features, add_distance_features
 
+train_mse_list = []
+val_mse_list = []
+time_list = []
+models = []
 
 
-def plot_k_precision(train_mse_list,val_mse_list):
+def plot_k_precision(train_mse_list, val_mse_list):
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, 16), train_mse_list, label="Training MSE", marker='o')
     plt.plot(range(1, 16), val_mse_list, label="Validation MSE", marker='o')
