@@ -1,7 +1,8 @@
+import random
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import random
-import matplotlib.pyplot as plt
 
 
 # Load and preprocess the dataset
@@ -52,9 +53,9 @@ def process_and_store_splits(filename, train_frac=0.7, val_frac=0.15, test_frac=
     train_data, val_data, test_data = split_by_trajectories(df, train_frac, val_frac, test_frac)
 
     # Store the clean data
-    train_data.to_csv('train_data_clean.csv', index=False)
-    val_data.to_csv('val_data_clean.csv', index=False)
-    test_data.to_csv('test_data_clean.csv', index=False)
+    train_data.to_csv('code\\train_data_clean.csv', index=False)
+    val_data.to_csv('code\\val_data_clean.csv', index=False)
+    test_data.to_csv('code\\test_data_clean.csv', index=False)
 
     return train_data, val_data, test_data
 
